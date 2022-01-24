@@ -281,9 +281,9 @@ int compress(FILE *fin, FILE *fout)
                     result = buildDictionary(inbuffer, inbytes, &cdict, &cdictlen, alphabet);
                     if (result) {
                         /* write out the ED to the output file */
-                        outbytes = fwrite(cdict + 2048, 1, 32, fout);
+                        outbytes = fwrite(cdict + 2048, 1, MAXBITS * sizeof(short), fout);
                         outtotal += outbytes;
-                        if (outbytes != 32) {
+                        if (outbytes != MAXBITS * sizeof(short)) {
                             result = FALSE;
                             perror("ERROR: fwrite() of ED");
                         }
@@ -356,20 +356,44 @@ int compress(FILE *fin, FILE *fout)
         }
         if (result) {
             if (cc == 0 && fopaddr > outbuffer) {  /* some output left to write */
-                fwrite(outbuffer, 1, fopaddr - outbuffer, fout);
-                if (cbn > 0) { /* incomplete byte at end of compressed output */
-                    printf("INFO: Incomplete byte at end of output buffer - writing one extra byte\n");
-                    fwrite(fopaddr, 1, 1, fout);
+                outbytes = fwrite(outbuffer, 1, fopaddr - outbuffer, fout);
+                outtotal += outbytes;
+                if (outbytes != fopaddr - outbuffer) {
+                    result = FALSE;
+                    perror("ERROR: fwrite() to output file");
+                }
+                else {
+                    if (cbn > 0) { /* incomplete byte at end of compressed output */
+                        printf("INFO: Incomplete byte at end of output buffer - writing one extra byte\n");
+                        outbytes = fwrite(fopaddr, 1, 1, fout);
+                        outtotal += outbytes;
+                        if (outbytes != 1) {
+                            result = FALSE;
+                            perror("ERROR: fwrite() of incomplete byte to output file");
+                        }
+                    }
                 }
             }
             if (cbn > 0) { /* write an end-of-file marker for compression with entropy-encoding*/
                 printf("INFO: Compressing with entropy encoding and last byte incomplete - writing X'0000' to mark end of file\n");
-                fwrite(&eor, 1, 2, fout);
+                outbytes = fwrite(&eor, 1, 2, fout);
+                outtotal += outbytes;
+                if (outbytes != 2) {
+                    result = FALSE;
+                    perror("ERROR: fwrite() of End-Of-Record marker to output file");
+                }
             }
             else {
                 printf("INFO: Compressing with entropy encoding and last byte complete - do nothing\n");
             }
         }
+    }
+
+    /* produce a report on space savings */
+    if (result) {
+        printf("Input file size:  %10d bytes\n", intotal);
+        printf("Output file size: %10d bytes\n", outtotal);
+        printf("Space reduction:  %10.1f %%\n", 100.0 * (1.0 - ((double)outtotal) / ((double)intotal)));
     }
 
     /* tidy up */
@@ -378,6 +402,9 @@ int compress(FILE *fin, FILE *fout)
     }
     if (outbuffer != NULL) {
         free(outbuffer);
+    }
+    if (cdict != NULL) {
+        free4k(cdict, cdictlen);
     }
 
     return result;
@@ -482,7 +509,8 @@ int openFiles(char *infile, char *outfile, FILE **pfin, FILE **pfout, int *pmode
             *pfout = fopen(outfile, "wb");
             if (*pfout == NULL) {
                 perror("ERROR: fopen() of output file");
-                fclose(*pfout);
+                fclose(*pfin);
+                *pfin = NULL;
             }
             else {
                 result = TRUE;
