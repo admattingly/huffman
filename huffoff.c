@@ -107,7 +107,7 @@ int buildDictionary(unsigned char *buffer, unsigned char **pedict, unsigned int 
 {
     int             i, result;
     const int       n = 256;            // dictionary has 256 entries
-    unsigned char   *edict;             // compression dictionary
+    unsigned char   *edict;             // expansion dictionary
     unsigned int    edictlen;
     unsigned char   entry[8];           // dictionary entry
     PHUFF_EE_EXTEND phee;               // ED and descending-frequency-sequence alphabet
